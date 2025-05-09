@@ -4,13 +4,17 @@ local fn = vim.fn
 
 M.config = {
   width = 30,
+  max_height = 10,
+  offset_x = 2,
+  offset_y = 1
 }
 
 local buf_id = nil
 local win_id = nil
 local namespace_id = nil
+local marks_cache = nil
 
---- Processes a mark object.
+--- A function to processes a mark object.
 ---
 --- Checks if the mark's name matches [a-zA-Z0-9],
 --- and retrieves the corresponding line's content after stripping indentation.
@@ -69,7 +73,9 @@ end
 --- If the mark buffer is not available or valid, does nothing.
 --- Replaces the buffer content with the current list of marks.
 --- If no marks are found, displays a "no marks" message.
-local function update_mark_window()
+---
+--- @param marks table Marks.
+local function update_mark_window(marks)
   if not buf_id or not api.nvim_buf_is_valid(buf_id) then
     return
   end
@@ -77,25 +83,20 @@ local function update_mark_window()
   api.nvim_buf_set_option(buf_id, 'modifiable', true)
   api.nvim_buf_set_lines(buf_id, 0, -1, false, {})
 
-  local marks = get_marks()
-
-  if #marks == 0 then
-    api.nvim_buf_set_lines(buf_id, 0, 0, false, {"no marks"})
-    api.nvim_buf_set_option(buf_id, 'modifiable', false)
-    return
-  end
-
   local lines = {}
-
-  for _, mark in ipairs(marks) do
-    table.insert(lines, string.format("%s: %s", mark.name, mark.line))
+  if #marks == 0 then
+    table.insert(lines, "no marks")
+  else
+    for _, mark in ipairs(marks) do
+      table.insert(lines, string.format("%s: %s", mark.name, mark.line))
+    end
   end
 
-  api.nvim_buf_set_lines(buf_id, 0, 0, false, lines)
+  api.nvim_buf_set_lines(buf_id, 0, -1, false, lines)
   api.nvim_buf_set_option(buf_id, 'modifiable', false)
 end
 
---- Opens a floating window to display marks.
+--- A function to opens a floating window to display marks.
 ---
 --- Creates a new floating window, or reopens it if already open.
 --- The window displays all local marks for the current buffer.
@@ -106,22 +107,37 @@ local function open_mark_window()
     buf_id = nil
   end
 
+  local marks = get_marks()
+  marks_cache = marks
+
+  local width = M.config.width
+  local height = math.min(M.config.max_height, #marks > 0 and #marks or 1)
+
+  local cursor_pos = api.nvim_win_get_cursor(0)
+  local cursor_row = cursor_pos[1]
+  local cursor_col = cursor_pos[2]
+  local cursor_screen_pos = fn.screenpos(0, cursor_row, cursor_col + 1)
+
+  local row = cursor_screen_pos.row + M.config.offset_y - fn.line('w0')
+  local col = cursor_screen_pos.col + M.config.offset_x
+
+  local win_width = api.nvim_win_get_width(0)
+  local win_height = api.nvim_win_get_height(0)
+  if col + width > win_width then
+    col = col - width - (M.config.offset_x * 2)
+  end
+  if row + height > win_height then
+    row = row - height - M.config.offset_y
+  end
+
+  row = math.max(0, row)
+  col = math.max(0, col)
+
   buf_id = api.nvim_create_buf(false, true)
   api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
   api.nvim_buf_set_option(buf_id, 'filetype', 'marks-popup')
   api.nvim_buf_set_option(buf_id, 'modifiable', false)
 
-  local width = M.config.width
-  local height = 10  -- TODO: resize.
-  local win_width = api.nvim_win_get_width(0)
-  local win_height = api.nvim_win_get_height(0)
-
-  local col = 0
-  if M.config.position == "right" then
-    col = win_width - width
-  end
-
-  local row = math.floor((win_height - height) / 2)
   local opts = {
     relative = 'win',
     width = width,
@@ -138,7 +154,7 @@ local function open_mark_window()
   api.nvim_win_set_option(win_id, 'relativenumber', false)
   api.nvim_win_set_option(win_id, 'wrap', false)
 
-  update_mark_window()
+  update_mark_window(marks)
 end
 
 --- A function to closes the mark window and cleans up resources.
@@ -154,6 +170,7 @@ function M.close_mark_window()
     api.nvim_buf_delete(buf_id, { force = true })
     buf_id = nil
   end
+  marks_cache = nil
 end
 
 --- A function to show the marks window and handle mark navigation.
@@ -165,10 +182,25 @@ function M.show_marks(key_type)
   vim.defer_fn(function()
     local next_char = fn.getchar()
     M.close_mark_window()
+
     local char = fn.nr2char(next_char)
-    if char:match("[a-zA-Z0-9]") then
-      vim.cmd("normal! " .. key_type .. char)
+    if not char:match("[a-zA-Z0-9]") then
+      return
     end
+
+    local exists = false
+    local marks = marks_cache ~= nil and marks_cache or get_marks()
+    for _, mark in ipairs(marks) do
+      if mark.name == char then
+        exists = true
+        break
+      end
+    end
+    if not exists then
+      return
+    end
+
+    vim.cmd("normal! " .. key_type .. char)
   end, 0)
 end
 
