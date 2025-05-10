@@ -11,7 +11,6 @@ M.config = {
 
 local buf_id = nil
 local win_id = nil
-local namespace_id = nil
 local marks_cache = nil
 
 --- A function to processes a mark object.
@@ -118,15 +117,16 @@ local function open_mark_window()
   local cursor_col = cursor_pos[2]
   local cursor_screen_pos = fn.screenpos(0, cursor_row, cursor_col + 1)
 
-  local row = cursor_screen_pos.row + M.config.offset_y - fn.line('w0')
-  local col = cursor_screen_pos.col + M.config.offset_x
+  local row = cursor_screen_pos.row + M.config.offset_y - 1
+  local col = cursor_screen_pos.col + M.config.offset_x - 1
 
-  local win_width = api.nvim_win_get_width(0)
-  local win_height = api.nvim_win_get_height(0)
-  if col + width > win_width then
+  local screen_width = vim.o.columns
+  local screen_height = vim.o.lines
+
+  if col + width > screen_width then
     col = col - width - (M.config.offset_x * 2)
   end
-  if row + height > win_height then
+  if row + height > screen_height then
     row = row - height - M.config.offset_y
   end
 
