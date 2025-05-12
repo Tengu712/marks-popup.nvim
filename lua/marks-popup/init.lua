@@ -113,25 +113,28 @@ local function open_mark_window()
   local height = math.min(M.config.max_height, #marks > 0 and #marks or 1)
 
   local cursor_pos = api.nvim_win_get_cursor(0)
-  local cursor_row = cursor_pos[1]
-  local cursor_col = cursor_pos[2]
-  local cursor_screen_pos = fn.screenpos(0, cursor_row, cursor_col + 1)
+  local row = cursor_pos[1]
+  local col = cursor_pos[2]
 
-  local row = cursor_screen_pos.row + M.config.offset_y - 1
-  local col = cursor_screen_pos.col + M.config.offset_x - 1
+  local screenpos = fn.screenpos(0, row, col + 1)
+  if screenpos.row == 0 or screenpos.col == 0 then
+    screenpos.row = 1
+    screenpos.col = 1
+    vim.notify("Unable to position popup: cursor is not visible", vim.log.levels.WARN)
+  end
+
+  local win_row = screenpos.row + M.config.offset_y
+  local win_col = screenpos.col + M.config.offset_x
 
   local screen_width = vim.o.columns
   local screen_height = vim.o.lines
 
-  if col + width > screen_width then
-    col = col - width - (M.config.offset_x * 2)
+  if win_col + width > screen_width then
+    win_col = math.max(0, win_col - width - M.config.offset_x * 2)
   end
-  if row + height > screen_height then
-    row = row - height - M.config.offset_y
+  if win_row + height > screen_height then
+    win_row = math.max(0, win_row - height - M.config.offset_y)
   end
-
-  row = math.max(0, row)
-  col = math.max(0, col)
 
   buf_id = api.nvim_create_buf(false, true)
   api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
@@ -139,11 +142,11 @@ local function open_mark_window()
   api.nvim_buf_set_option(buf_id, 'modifiable', false)
 
   local opts = {
-    relative = 'win',
+    relative = 'editor',
     width = width,
     height = height,
-    col = col,
-    row = row,
+    col = win_col - 1,
+    row = win_row - 1,
     style = 'minimal',
     border = 'rounded'
   }
