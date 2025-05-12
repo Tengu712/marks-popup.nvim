@@ -52,8 +52,13 @@ end
 
 --- A function to retrieves and processes local marks for the current buffer.
 ---
---- @return table A list of processed marks in the current buffer.
+--- @return table|nil A list of processed marks in the current buffer.
 local function get_marks()
+  local bufnr = api.nvim_get_current_buf()
+  if api.nvim_buf_get_option(bufnr, 'buftype') ~= '' then
+    return nil
+  end
+
   local raw_marks = fn.getmarklist(fn.bufname('%'))
   local marks = {}
 
@@ -99,6 +104,8 @@ end
 ---
 --- Creates a new floating window, or reopens it if already open.
 --- The window displays all local marks for the current buffer.
+---
+--- @return bool If a window is opened it returns true.
 local function open_mark_window()
   if win_id and api.nvim_win_is_valid(win_id) then
     api.nvim_win_close(win_id, true)
@@ -107,6 +114,9 @@ local function open_mark_window()
   end
 
   local marks = get_marks()
+  if marks == nil then
+    return false
+  end
   marks_cache = marks
 
   local width = M.config.width
@@ -158,6 +168,8 @@ local function open_mark_window()
   api.nvim_win_set_option(win_id, 'wrap', false)
 
   update_mark_window(marks)
+
+  return true
 end
 
 --- A function to closes the mark window and cleans up resources.
@@ -180,7 +192,10 @@ end
 ---
 --- @param key_type string The type of mark navigation key to use ("'" or "`").
 function M.show_marks(key_type)
-  open_mark_window()
+  local opened = open_mark_window()
+  if not opened then
+    return
+  end
 
   vim.defer_fn(function()
     local next_char = fn.getchar()
